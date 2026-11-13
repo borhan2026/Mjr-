@@ -27,8 +27,17 @@ input,textarea,select,button{font-family:inherit}
 .menu button{display:block;width:100%;text-align:left;padding:12px 16px;border:0;background:none;color:inherit;font:inherit;cursor:pointer}
 .menu button:hover,.menu button:focus-visible{background:var(--r2);outline:0}
 .sheet{max-width:780px;margin:14px auto;background:var(--paper);padding:20px;border-radius:var(--rad,6px)}
-.top{display:flex;align-items:center;gap:14px;justify-content:space-between;flex-wrap:wrap}
-.who{display:flex;align-items:center;gap:14px;min-width:0}
+.top{display:flex;align-items:center;gap:14px;justify-content:space-between;flex-wrap:nowrap}
+.who{display:flex;align-items:center;gap:14px;min-width:0;flex:1 1 0}
+.who>div{min-width:0;flex:1}
+.stamp{flex:none;white-space:nowrap}
+@media (max-width:520px){
+.sheet{padding:14px}
+.top{gap:8px}.who{gap:10px}
+#logo{width:52px;height:52px}
+.stamp{font-size:20px;padding:4px 10px}
+.who .nm{font-size:16px}
+}
 #logo{width:64px;height:64px;object-fit:contain;border-radius:50%;cursor:pointer;flex:none}
 .stamp{font:italic 700 30px Georgia,serif;background:var(--vbg);color:var(--vink);padding:6px 22px}
 .lbl{font-size:12px;color:var(--mute)}
@@ -76,6 +85,13 @@ td textarea{resize:none;overflow:hidden}
 .ic img{width:72px;height:72px;border-radius:16px;border:1px solid var(--line);background:#fff}
 .ic p{margin:0;font-size:13px;color:var(--mute)}
 .help{font-size:13px;color:var(--mute);margin-top:10px;line-height:1.5}
+.slist{margin-top:10px;max-height:50vh;overflow:auto}
+.si{display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--line)}
+.si .o{flex:1;text-align:left;padding:10px 4px;border:0;background:none;color:inherit;font:inherit;cursor:pointer;line-height:1.35}
+.si .o small{display:block;color:var(--mute);font-size:12px}
+.si.cur .o b{color:var(--head)}
+.si .d{border:0;background:none;color:var(--mute);font-size:16px;cursor:pointer;padding:8px}
+.empty{padding:14px 4px;color:var(--mute);font-size:13px}
 #pcopy{display:none}.pv{display:block;white-space:pre-wrap;word-break:break-word}
 .ctag{font-size:12px;color:var(--mute);text-align:right;margin-bottom:4px}
 @media print{
@@ -98,6 +114,8 @@ body.pc>.sheet{display:none}body.pc #pcopy{display:block}
     <button id="mLogo">Set logo</button>
     <button id="mDel">Remove logo</button>
     <button id="mAdd">Add item</button>
+    <button id="mNew">➕ New voucher / নতুন রশিদ</button>
+    <button id="mSearch">🔍 Search / সার্চ</button>
     <button id="mDesign">🎨 Design / ডিজাইন</button>
     <button id="mInstall">📲 App icon / অ্যাপ আইকন</button>
     <button id="mDownload">⬇ Download image / ডাউনলোড</button>
@@ -145,6 +163,13 @@ body.pc>.sheet{display:none}body.pc #pcopy{display:block}
   <input class="f" id="iName" value="Voucher" style="border:1px solid var(--line);border-radius:8px;padding:9px">
   <div class="help" id="iHelp"></div>
   <div class="bt"><button id="iClose">Close</button><button class="go" id="iGo">Install / Add</button></div>
+</div></div>
+
+<div class="dlg" id="sdlg"><div class="box">
+  <h3>Search / সার্চ</h3>
+  <input class="f" id="sq" inputmode="numeric" placeholder="রশিদ নম্বর লিখুন…" style="border:1px solid var(--line);border-radius:8px;padding:9px">
+  <div class="slist" id="slist"></div>
+  <div class="bt"><button id="sClose">Close</button></div>
 </div></div>
 
 <div class="sheet">
@@ -212,6 +237,7 @@ function calc(){
   let s=0;document.querySelectorAll('#rows tr').forEach(tr=>{s+=parseFloat(tr.querySelector('td:last-child input').value)||0});
   const adv=parseFloat($('adv').value)||0;
   $('total').textContent=fmt(s);$('paid').textContent=fmt(s);$('ret').textContent=fmt(Math.max(adv-s,0));
+  sched();
 }
 $('adv').addEventListener('input',calc);
 
@@ -392,6 +418,79 @@ async function downloadImage(){
   finally{wrap.remove()}
 }
 $('mDownload').onclick=downloadImage;
+
+/* ---------- Saved vouchers: auto receipt no + search ---------- */
+var ready=false,loading=false,curKey='',tm=null;
+const SKEY='voucher-store';
+let store={};try{store=JSON.parse(localStorage.getItem(SKEY)||'{}')}catch(e){}
+const persist=()=>{try{localStorage.setItem(SKEY,JSON.stringify(store))}catch(e){}};
+function snap(){
+  return{from:$('from').value,fromRole:$('fromRole').value,to:$('to').value,toRole:$('toRole').value,date:$('date').value,adv:$('adv').value,ts:Date.now(),
+    rows:[...document.querySelectorAll('#rows tr')].map(tr=>{const t=tr.querySelectorAll('textarea'),i=tr.querySelectorAll('input');
+      return{t:t[0].value,n:t[1].value,q:i[0].value,r:i[1].value,r2:i[2].value,a:i[3].value,an:i[4].value}})};
+}
+function sched(){
+  if(!ready||loading||!curKey)return;
+  clearTimeout(tm);tm=setTimeout(()=>{store[curKey]=snap();persist()},400);
+}
+document.addEventListener('input',e=>{if(e.target.closest&&e.target.closest('.sheet')&&e.target.id!=='rno')sched()});
+function nextNo(){
+  let m=0,w=5;
+  Object.keys(store).forEach(k=>{const n=parseInt(k,10);if(!isNaN(n)){m=Math.max(m,n);w=Math.max(w,k.length)}});
+  return String(m+1).padStart(w,'0');
+}
+function loadV(k){
+  const d=store[k];if(!d)return;
+  loading=true;
+  ['from','fromRole','to','toRole','date'].forEach(f=>$(f).value=d[f]||'');
+  $('rno').value=k;$('adv').value=d.adv||'';
+  $('rows').innerHTML='';(d.rows&&d.rows.length?d.rows:[{}]).forEach(r=>addRow(r));
+  loading=false;curKey=k;calc();
+}
+function newV(){
+  if(tm){clearTimeout(tm);tm=null;if(curKey&&ready){store[curKey]=snap();persist()}}
+  const last=Object.values(store).sort((a,b)=>(b.ts||0)-(a.ts||0))[0]||snap();
+  loading=true;
+  ['from','fromRole','to','toRole'].forEach(f=>$(f).value=last[f]||'');
+  const d=new Date(),p=n=>String(n).padStart(2,'0');
+  $('date').value=p(d.getDate())+'.'+p(d.getMonth()+1)+'.'+d.getFullYear();
+  $('adv').value='';$('rows').innerHTML='';addRow();
+  loading=false;
+  const k=nextNo();$('rno').value=k;curKey=k;calc();
+}
+$('rno').addEventListener('change',()=>{
+  const nk=$('rno').value.trim();
+  if(!nk){$('rno').value=curKey;return}
+  if(nk===curKey)return;
+  if(store[nk]&&!confirm('রশিদ '+nk+' আগে থেকেই আছে। ওভাররাইট করবেন?')){$('rno').value=curKey;return}
+  const data=snap();delete store[curKey];curKey=nk;store[nk]=data;persist();
+});
+const sdlg=$('sdlg');
+function vTotal(d){return(d.rows||[]).reduce((s,r)=>s+(parseFloat(r.a)||0),0)}
+function renderList(){
+  const q=$('sq').value.trim(),box=$('slist');box.innerHTML='';
+  if(tm){clearTimeout(tm);tm=null;if(curKey){store[curKey]=snap();persist()}}
+  const keys=Object.keys(store).filter(k=>!q||k.includes(q)||(/^\d+$/.test(q)&&parseInt(q,10)===parseInt(k,10)))
+    .sort((a,b)=>(parseInt(b,10)||0)-(parseInt(a,10)||0));
+  if(!keys.length){const e=document.createElement('div');e.className='empty';e.textContent='কিছু পাওয়া যায়নি।';box.append(e);return}
+  keys.forEach(k=>{
+    const d=store[k],row=document.createElement('div');row.className='si'+(k===curKey?' cur':'');
+    const o=document.createElement('button');o.className='o';
+    const b=document.createElement('b');b.textContent=k;
+    const sm=document.createElement('small');sm.textContent=[d.to,d.date,fmt(vTotal(d))].filter(Boolean).join(' · ');
+    o.append(b,sm);o.onclick=()=>{loadV(k);sdlg.classList.remove('on')};
+    const x=document.createElement('button');x.className='d';x.textContent='🗑';x.title='Delete';
+    x.onclick=()=>{if(!confirm('রশিদ '+k+' মুছে ফেলবেন?'))return;delete store[k];persist();if(k===curKey)newV();renderList()};
+    row.append(o,x);box.append(row);
+  });
+}
+$('mSearch').onclick=()=>{$('sq').value='';renderList();sdlg.classList.add('on');setTimeout(()=>$('sq').focus(),50)};
+$('sq').oninput=renderList;
+$('sClose').onclick=()=>sdlg.classList.remove('on');
+sdlg.onclick=e=>{if(e.target===sdlg)sdlg.classList.remove('on')};
+$('mNew').onclick=newV;
+if(!Object.keys(store).length){curKey=$('rno').value.trim()||'00001';store[curKey]=snap();persist()}
+newV();ready=true;
 applyDesign();updateIcon();
 </script>
 </body>
